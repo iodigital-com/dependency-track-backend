@@ -895,6 +895,57 @@ public class ComponentsResourceTest extends ResourceTest {
     }
 
     @Test
+    public void listComponentsWithProjectAncestorsTest() {
+        initializeWithPermissions(Permissions.VIEW_PORTFOLIO);
+
+        final Project rootProject = qm.createProject("root", null, null, null, null, null, null, false);
+        final Project parentProject = qm.createProject("parent", null, "1.0", null, rootProject, null, null, false);
+        final Project project = qm.createProject("child", null, "2.0", null, parentProject, null, null, false);
+        final var component = new Component();
+        component.setProject(project);
+        component.setName("comp");
+        qm.createComponent(component, false);
+
+        Response response = jersey.target("/components")
+                .queryParam("expand", "project_ancestors")
+                .request()
+                .header(X_API_KEY, apiKey)
+                .get();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThatJson(getPlainTextBody(response))
+                .inPath("$.items[0].project")
+                .isEqualTo(
+                        /* language=JSON */ """
+                        {
+                          "name": "child",
+                          "version": "2.0",
+                          "uuid": "%s",
+                          "ancestors": [
+                            {
+                              "name": "root",
+                              "uuid": "%s"
+                            },
+                            {
+                              "name": "parent",
+                              "version": "1.0",
+                              "uuid": "%s"
+                            }
+                          ]
+                        }
+                        """.formatted(
+                                        project.getUuid(), rootProject.getUuid(), parentProject.getUuid()));
+
+        // Ancestors are only included when requested.
+        response =
+                jersey.target("/components").request().header(X_API_KEY, apiKey).get();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThatJson(getPlainTextBody(response))
+                .inPath("$.items[0].project")
+                .isObject()
+                .doesNotContainKey("ancestors");
+    }
+
+    @Test
     public void listComponentsWithMetricsTest() {
         initializeWithPermissions(Permissions.VIEW_PORTFOLIO);
 

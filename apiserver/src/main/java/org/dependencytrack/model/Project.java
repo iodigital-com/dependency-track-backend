@@ -380,6 +380,8 @@ public class Project implements Serializable {
 
     private transient List<ProjectVersion> versions;
 
+    private transient List<ProjectAncestor> ancestors;
+
     private transient List<Component> dependencyGraph;
 
     private transient String author;
@@ -632,6 +634,14 @@ public class Project implements Serializable {
 
     public void setVersions(List<ProjectVersion> versions) {
         this.versions = versions;
+    }
+
+    public List<ProjectAncestor> getAncestors() {
+        return ancestors;
+    }
+
+    public void setAncestors(List<ProjectAncestor> ancestors) {
+        this.ancestors = ancestors;
     }
 
     @JsonIgnore

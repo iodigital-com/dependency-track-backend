@@ -18,6 +18,9 @@
  */
 package org.dependencytrack.resources.v1.vo;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import org.dependencytrack.model.ProjectAncestor;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +45,8 @@ public class AffectedProject {
 
     private final List<UUID> affectedComponentUuids;
 
+    private final List<ProjectAncestor> ancestors;
+
     public AffectedProject(
             UUID uuid,
             boolean dependencyGraphAvailable,
@@ -49,12 +54,24 @@ public class AffectedProject {
             String version,
             boolean active,
             List<UUID> affectedComponentUuids) {
+        this(uuid, dependencyGraphAvailable, name, version, active, affectedComponentUuids, null);
+    }
+
+    public AffectedProject(
+            UUID uuid,
+            boolean dependencyGraphAvailable,
+            String name,
+            String version,
+            boolean active,
+            List<UUID> affectedComponentUuids,
+            List<ProjectAncestor> ancestors) {
         this.uuid = uuid;
         this.dependencyGraphAvailable = dependencyGraphAvailable;
         this.name = name;
         this.version = version;
         this.active = active;
         this.affectedComponentUuids = affectedComponentUuids == null ? new ArrayList<>() : affectedComponentUuids;
+        this.ancestors = ancestors;
     }
 
     public UUID getUuid() {
@@ -79,5 +96,10 @@ public class AffectedProject {
 
     public List<UUID> getAffectedComponentUuids() {
         return affectedComponentUuids;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public List<ProjectAncestor> getAncestors() {
+        return ancestors;
     }
 }

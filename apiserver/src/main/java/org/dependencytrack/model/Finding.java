@@ -156,6 +156,10 @@ public final class Finding implements Serializable {
         return cwes;
     }
 
+    public void setProjectAncestors(final List<ProjectAncestor> ancestors) {
+        optValue(component, "projectAncestors", ancestors);
+    }
+
     public String getMatrix() {
         return project.toString() + ":" + component.get("uuid") + ":" + vulnerability.get("uuid");
     }

@@ -45,11 +45,13 @@ import org.dependencytrack.integrations.FindingPackagingFormat;
 import org.dependencytrack.model.Finding;
 import org.dependencytrack.model.GroupedFinding;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.RepositoryType;
 import org.dependencytrack.model.Vulnerability;
 import org.dependencytrack.model.validation.ValidUuid;
 import org.dependencytrack.persistence.QueryManager;
 import org.dependencytrack.persistence.jdbi.FindingDao;
+import org.dependencytrack.persistence.jdbi.ProjectDao;
 import org.dependencytrack.pkgmetadata.PackageMetadata;
 import org.dependencytrack.pkgmetadata.PackageMetadataDao;
 import org.dependencytrack.pkgmetadata.ResolvePackageMetadataWorkflow;
@@ -81,6 +83,7 @@ import java.io.StringWriter;
 import java.io.Writer;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -484,10 +487,20 @@ public class FindingResource extends AbstractV1ApiResource {
                         .getAllFindings(
                                 filters, showSuppressed, showInactive, orderBy, totalCountThreshold(totalCount)));
 
-        return withTotalCountHeaders(
-                        Response.ok(mapComponentLatestVersion(
-                                page.items().stream().map(Finding::new).toList())),
-                        page.totalCount())
+        final Map<UUID, List<ProjectAncestor>> ancestorsByProjectUuid = withJdbiHandle(
+                getAlpineRequest(),
+                handle -> handle.attach(ProjectDao.class)
+                        .getAncestors(page.items().stream()
+                                .map(FindingDao.FindingRow::projectUuid)
+                                .collect(Collectors.toSet())));
+        final List<Finding> findings = new ArrayList<>(page.items().size());
+        for (final FindingDao.FindingRow row : page.items()) {
+            final var finding = new Finding(row);
+            finding.setProjectAncestors(ancestorsByProjectUuid.get(row.projectUuid()));
+            findings.add(finding);
+        }
+
+        return withTotalCountHeaders(Response.ok(mapComponentLatestVersion(findings)), page.totalCount())
                 .build();
     }
 

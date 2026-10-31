@@ -31,10 +31,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import org.dependencytrack.auth.Permissions;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.Tag;
 import org.dependencytrack.model.validation.ValidUuid;
 import org.dependencytrack.persistence.QueryManager;
 import org.dependencytrack.persistence.TagQueryManager;
+import org.dependencytrack.persistence.jdbi.ProjectDao;
 import org.dependencytrack.resources.AbstractApiResource;
 import org.dependencytrack.resources.v1.openapi.PaginatedApi;
 import org.dependencytrack.resources.v1.problems.ProblemDetails;
@@ -62,7 +64,11 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+
+import static org.dependencytrack.persistence.jdbi.JdbiFactory.withJdbiHandle;
 
 @Path("/v1/tag")
 @io.swagger.v3.oas.annotations.tags.Tag(name = "tag")
@@ -203,12 +209,20 @@ public class TagResource extends AbstractApiResource {
         //   Will likely need a migration to cleanup existing tags for this.
 
         final List<TagQueryManager.TaggedProjectRow> taggedProjectListRows;
+        final Map<UUID, List<ProjectAncestor>> ancestorsByProjectUuid;
         try (final var qm = new QueryManager(getAlpineRequest())) {
             taggedProjectListRows = qm.getTaggedProjects(tagName);
+            ancestorsByProjectUuid = withJdbiHandle(
+                    qm,
+                    handle -> handle.attach(ProjectDao.class)
+                            .getAncestors(taggedProjectListRows.stream()
+                                    .map(TagQueryManager.TaggedProjectRow::uuid)
+                                    .toList()));
         }
 
         final List<TaggedProjectListResponseItem> tags = taggedProjectListRows.stream()
-                .map(row -> new TaggedProjectListResponseItem(row.uuid(), row.name(), row.version()))
+                .map(row -> new TaggedProjectListResponseItem(
+                        row.uuid(), row.name(), row.version(), ancestorsByProjectUuid.get(row.uuid())))
                 .toList();
         final long totalCount = taggedProjectListRows.isEmpty()
                 ? 0
@@ -325,12 +339,20 @@ public class TagResource extends AbstractApiResource {
         //   Will likely need a migration to cleanup existing tags for this.
 
         final List<TagQueryManager.TaggedCollectionProjectRow> taggedCollectionProjectListRows;
+        final Map<UUID, List<ProjectAncestor>> ancestorsByProjectUuid;
         try (final var qm = new QueryManager(getAlpineRequest())) {
             taggedCollectionProjectListRows = qm.getTaggedCollectionProjects(tagName);
+            ancestorsByProjectUuid = withJdbiHandle(
+                    qm,
+                    handle -> handle.attach(ProjectDao.class)
+                            .getAncestors(taggedCollectionProjectListRows.stream()
+                                    .map(TagQueryManager.TaggedCollectionProjectRow::uuid)
+                                    .toList()));
         }
 
         final List<TaggedCollectionProjectListResponseItem> tags = taggedCollectionProjectListRows.stream()
-                .map(row -> new TaggedCollectionProjectListResponseItem(row.uuid(), row.name(), row.version()))
+                .map(row -> new TaggedCollectionProjectListResponseItem(
+                        row.uuid(), row.name(), row.version(), ancestorsByProjectUuid.get(row.uuid())))
                 .toList();
         final long totalCount = taggedCollectionProjectListRows.isEmpty()
                 ? 0

@@ -25,3 +25,10 @@ properties:
   uuid:
     type: string
     format: uuid
+  ancestors:
+    description: >
+      Ancestors of the project, ordered from the root to the direct parent.
+      Only included when `expand` contains `project_ancestors`.
+    type: array
+    items:
+      $ref: "./component-project-ancestor.yaml"

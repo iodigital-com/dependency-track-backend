@@ -75,6 +75,7 @@ get:
     * `metrics`
     * `package_metadata`
     * `package_artifact_metadata`
+    * `project_ancestors`
 
     Requires permission `VIEW_PORTFOLIO`
   tags:

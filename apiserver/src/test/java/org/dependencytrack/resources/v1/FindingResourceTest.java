@@ -1352,6 +1352,20 @@ public class FindingResourceTest extends ResourceTest {
         assertEquals(
                 p1_child.getUuid().toString(),
                 json.getJsonObject(3).getJsonObject("component").getString("project"));
+        assertThatJson(json.getJsonObject(3)
+                        .getJsonObject("component")
+                        .getJsonArray("projectAncestors")
+                        .toString())
+                .isEqualTo(/* language=JSON */ """
+                        [
+                          {
+                            "uuid": "%s",
+                            "name": "Acme Example 1",
+                            "version": "1.0"
+                          }
+                        ]
+                        """.formatted(p1.getUuid()));
+        assertNull(json.getJsonObject(0).getJsonObject("component").get("projectAncestors"));
         assertEquals(
                 date.getTime(),
                 json.getJsonObject(4)

@@ -19,6 +19,7 @@
 package org.dependencytrack.resources.v2.mapping;
 
 import org.dependencytrack.api.v2.model.ComponentProject;
+import org.dependencytrack.api.v2.model.ComponentProjectAncestor;
 import org.dependencytrack.api.v2.model.DependencyMetrics;
 import org.dependencytrack.api.v2.model.Hashes;
 import org.dependencytrack.api.v2.model.License;
@@ -29,6 +30,7 @@ import org.dependencytrack.api.v2.model.Scope;
 import org.dependencytrack.api.v2.model.SortDirection;
 import org.dependencytrack.model.Component;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
@@ -63,6 +65,10 @@ public class ModelMapper {
     }
 
     public static ComponentProject mapProject(Project project) {
+        return mapProject(project, null);
+    }
+
+    public static ComponentProject mapProject(Project project, @Nullable List<ProjectAncestor> ancestors) {
         if (project == null) {
             return null;
         }
@@ -70,6 +76,20 @@ public class ModelMapper {
                 .name(project.getName())
                 .version(project.getVersion())
                 .uuid(project.getUuid())
+                .ancestors(
+                        ancestors != null
+                                ? ancestors.stream()
+                                        .map(ModelMapper::mapProjectAncestor)
+                                        .toList()
+                                : null)
+                .build();
+    }
+
+    private static ComponentProjectAncestor mapProjectAncestor(ProjectAncestor ancestor) {
+        return ComponentProjectAncestor.builder()
+                .name(ancestor.name())
+                .version(ancestor.version())
+                .uuid(ancestor.uuid())
                 .build();
     }
 

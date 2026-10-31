@@ -107,6 +107,53 @@ public class PolicyViolationResourceTest extends ResourceTest {
     }
 
     @Test
+    public void getViolationsWithProjectAncestorsTest() {
+        initializeWithPermissions(Permissions.VIEW_POLICY_VIOLATION);
+
+        final Project rootProject = qm.createProject("Acme Root", null, null, null, null, null, null, false);
+        final Project project = qm.createProject("Acme Example", null, "1.0", null, rootProject, null, null, false);
+
+        var component = new Component();
+        component.setProject(project);
+        component.setName("Acme Component");
+        component.setVersion("1.0");
+        component = qm.createComponent(component, false);
+
+        final Policy policy = qm.createPolicy("Blacklisted Version", Policy.Operator.ALL, Policy.ViolationState.FAIL);
+        final PolicyCondition condition = qm.createPolicyCondition(
+                policy, PolicyCondition.Subject.VERSION, PolicyCondition.Operator.NUMERIC_EQUAL, "1.0");
+
+        final var violation = new PolicyViolation();
+        violation.setType(PolicyViolation.Type.OPERATIONAL);
+        violation.setComponent(component);
+        violation.setPolicyCondition(condition);
+        violation.setTimestamp(new Date());
+        qm.persist(violation);
+
+        final Response response = jersey.target(V1_POLICY_VIOLATION)
+                .request()
+                .header(X_API_KEY, apiKey)
+                .get();
+        assertThat(response.getStatus()).isEqualTo(Response.Status.OK.getStatusCode());
+
+        final JsonArray jsonArray = parseJsonArray(response);
+        assertThat(jsonArray).hasSize(1);
+        assertThatJson(jsonArray
+                        .getJsonObject(0)
+                        .getJsonObject("project")
+                        .getJsonArray("ancestors")
+                        .toString())
+                .isEqualTo(/* language=JSON */ """
+                        [
+                          {
+                            "uuid": "%s",
+                            "name": "Acme Root"
+                          }
+                        ]
+                        """.formatted(rootProject.getUuid()));
+    }
+
+    @Test
     public void getViolationsUnauthorizedTest() {
         final Response response = jersey.target(V1_POLICY_VIOLATION)
                 .request()

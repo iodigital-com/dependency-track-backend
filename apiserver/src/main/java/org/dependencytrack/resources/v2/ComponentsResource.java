@@ -38,8 +38,10 @@ import org.dependencytrack.model.Classifier;
 import org.dependencytrack.model.Component;
 import org.dependencytrack.model.License;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.persistence.QueryManager;
 import org.dependencytrack.persistence.jdbi.ComponentDao;
+import org.dependencytrack.persistence.jdbi.ProjectDao;
 import org.dependencytrack.persistence.jdbi.query.ListComponentsQuery;
 import org.dependencytrack.pkgmetadata.PackageArtifactMetadata;
 import org.dependencytrack.pkgmetadata.PackageArtifactMetadataDao;
@@ -68,6 +70,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -148,6 +151,7 @@ public class ComponentsResource extends AbstractApiResource implements Component
         final boolean expandMetrics = hasExpand && expand.contains("metrics");
         final boolean expandPkgMeta = hasExpand && expand.contains("package_metadata");
         final boolean expandPkgArtifactMeta = hasExpand && expand.contains("package_artifact_metadata");
+        final boolean expandProjectAncestors = hasExpand && expand.contains("project_ancestors");
 
         return withJdbiHandle(getAlpineRequest(), handle -> {
             PackageURL packageURL = null;
@@ -217,6 +221,7 @@ public class ComponentsResource extends AbstractApiResource implements Component
             var metricsByComponentId = Map.<Long, DependencyMetrics>of();
             var pkgMetaByPackagePurl = Map.<String, PackageMetadata>of();
             var pkgArtifactMetaByPurl = Map.<String, PackageArtifactMetadata>of();
+            var ancestorsByProjectUuid = Map.<UUID, List<ProjectAncestor>>of();
             if (!componentsPage.items().isEmpty()) {
                 if (expandMetrics) {
                     final Set<Long> componentIds = componentsPage.items().stream()
@@ -244,6 +249,14 @@ public class ComponentsResource extends AbstractApiResource implements Component
                             .getAll(versionedPurls).stream()
                                     .collect(Collectors.toMap(pam -> pam.purl().canonicalize(), Function.identity()));
                 }
+                if (expandProjectAncestors) {
+                    final Set<UUID> projectUuids = componentsPage.items().stream()
+                            .map(Component::getProject)
+                            .filter(Objects::nonNull)
+                            .map(Project::getUuid)
+                            .collect(Collectors.toSet());
+                    ancestorsByProjectUuid = handle.attach(ProjectDao.class).getAncestors(projectUuids);
+                }
             }
 
             final var responseItems = new ArrayList<ListComponentsResponseItem>(
@@ -254,6 +267,11 @@ public class ComponentsResource extends AbstractApiResource implements Component
                 final String packagePurlStr = purl != null ? PurlUtil.purlPackageOnly(purl) : null;
                 final PackageArtifactMetadata pkgArtifactMeta =
                         purlStr != null ? pkgArtifactMetaByPurl.get(purlStr) : null;
+                final List<ProjectAncestor> projectAncestors =
+                        expandProjectAncestors && componentRow.getProject() != null
+                                ? ancestorsByProjectUuid.getOrDefault(
+                                        componentRow.getProject().getUuid(), List.of())
+                                : null;
                 final var item = ListComponentsResponseItem.builder()
                         .name(componentRow.getName())
                         .hashes(mapHashes(componentRow))
@@ -275,7 +293,7 @@ public class ComponentsResource extends AbstractApiResource implements Component
                         .swidTagId(componentRow.getSwidTagId())
                         .uuid(componentRow.getUuid())
                         .version(componentRow.getVersion())
-                        .project(mapProject(componentRow.getProject()))
+                        .project(mapProject(componentRow.getProject(), projectAncestors))
                         .metrics(
                                 expandMetrics
                                         ? mapDependencyMetrics(metricsByComponentId.get(componentRow.getId()))

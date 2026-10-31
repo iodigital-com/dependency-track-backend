@@ -28,6 +28,7 @@ import org.dependencytrack.model.Classifier;
 import org.dependencytrack.model.ExternalReference;
 import org.dependencytrack.model.OrganizationalContact;
 import org.dependencytrack.model.OrganizationalEntity;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.ProjectCollectionLogic;
 import org.dependencytrack.model.ProjectMetadata;
 import org.dependencytrack.persistence.jdbi.command.CloneProjectCommand;
@@ -843,6 +844,52 @@ public interface ProjectDao extends SqlObject, PaginationSupport {
                AND ${apiProjectAclCondition}
             """)
     Set<UUID> getAccessibleProjectUuids(@Bind Collection<UUID> projectUuids);
+
+    record ProjectAncestorRow(
+            UUID projectUuid,
+            UUID uuid,
+            String name,
+            @Nullable String version) {}
+
+    @SqlQuery("""
+            SELECT project."UUID" AS "projectUuid"
+                 , ancestor."UUID" AS "uuid"
+                 , ancestor."NAME" AS "name"
+                 , ancestor."VERSION" AS "version"
+              FROM "PROJECT" AS project
+             INNER JOIN "PROJECT_HIERARCHY" AS ph
+                ON ph."CHILD_PROJECT_ID" = project."ID"
+               AND ph."DEPTH" > 0
+             INNER JOIN "PROJECT" AS ancestor
+                ON ancestor."ID" = ph."PARENT_PROJECT_ID"
+             WHERE project."UUID" = ANY(:projectUuids)
+             ORDER BY project."UUID"
+                    , ph."DEPTH" DESC
+            """)
+    @RegisterConstructorMapper(ProjectAncestorRow.class)
+    List<ProjectAncestorRow> getAncestorRows(@Bind Collection<UUID> projectUuids);
+
+    /**
+     * Ancestors are not subject to the portfolio ACL, consistent with how a project's parent is exposed.
+     *
+     * @param projectUuids UUIDs of the projects to get the ancestors of.
+     * @return The ancestors of each project that has any, ordered from the root to the direct parent.
+     * @since 5.3.0
+     */
+    default Map<UUID, List<ProjectAncestor>> getAncestors(final Collection<UUID> projectUuids) {
+        if (projectUuids.isEmpty()) {
+            return Map.of();
+        }
+
+        final var ancestorsByProjectUuid = new HashMap<UUID, List<ProjectAncestor>>();
+        for (final ProjectAncestorRow row : getAncestorRows(projectUuids)) {
+            ancestorsByProjectUuid
+                    .computeIfAbsent(row.projectUuid(), ignored -> new ArrayList<>())
+                    .add(new ProjectAncestor(row.uuid(), row.name(), row.version()));
+        }
+
+        return ancestorsByProjectUuid;
+    }
 
     /**
      * @param command The clone command.

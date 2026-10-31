@@ -22,6 +22,7 @@ import alpine.model.Team;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.dependencytrack.model.Classifier;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.ProjectCollectionLogic;
 import org.dependencytrack.model.Tag;
 import org.dependencytrack.persistence.jdbi.ProjectDao.ConciseProjectListRow;
@@ -77,9 +78,16 @@ public record ConciseProject(
         boolean hasChildren,
 
         @Schema(description = "Latest metrics for the project")
-        ConciseProjectMetrics metrics) {
+        ConciseProjectMetrics metrics,
+
+        @Schema(description = "Ancestors of the project, ordered from the root to the direct parent")
+        List<ProjectAncestor> ancestors) {
 
     public ConciseProject(final ConciseProjectListRow row) {
+        this(row, null);
+    }
+
+    public ConciseProject(final ConciseProjectListRow row, final List<ProjectAncestor> ancestors) {
         this(
                 row.uuid(),
                 row.group(),
@@ -95,7 +103,8 @@ public record ConciseProject(
                 row.lastBomImportFormat(),
                 row.lastRiskScore(),
                 row.hasChildren(),
-                row.metrics() != null ? new ConciseProjectMetrics(row.metrics()) : null);
+                row.metrics() != null ? new ConciseProjectMetrics(row.metrics()) : null,
+                ancestors);
     }
 
     private static List<Tag> convertTags(final Collection<String> tagNames) {

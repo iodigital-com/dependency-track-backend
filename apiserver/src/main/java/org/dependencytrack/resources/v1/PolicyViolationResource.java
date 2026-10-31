@@ -35,8 +35,10 @@ import org.dependencytrack.auth.Permissions;
 import org.dependencytrack.model.Component;
 import org.dependencytrack.model.PolicyViolation;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.validation.ValidUuid;
 import org.dependencytrack.persistence.QueryManager;
+import org.dependencytrack.persistence.jdbi.ProjectDao;
 import org.dependencytrack.resources.AbstractApiResource;
 import org.dependencytrack.resources.v1.openapi.PaginatedApi;
 import org.dependencytrack.resources.v1.problems.ProblemDetails;
@@ -53,7 +55,12 @@ import javax.jdo.FetchPlan;
 import javax.jdo.PersistenceManager;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import static org.dependencytrack.persistence.jdbi.JdbiFactory.withJdbiHandle;
 
 /**
  * JAX-RS resources for processing policy violations.
@@ -117,7 +124,20 @@ public class PolicyViolationResource extends AbstractApiResource {
             filters.put("textSearchField", textSearchField);
             filters.put("textSearchInput", textSearchInput);
             final PaginatedResult result = qm.getPolicyViolations(suppressed, showInactive, filters);
-            return Response.ok(detachViolations(qm, result.getList(PolicyViolation.class)))
+            final Collection<PolicyViolation> violations = detachViolations(qm, result.getList(PolicyViolation.class));
+            final Map<UUID, List<ProjectAncestor>> ancestorsByProjectUuid = withJdbiHandle(
+                    qm,
+                    handle -> handle.attach(ProjectDao.class)
+                            .getAncestors(violations.stream()
+                                    .map(violation -> violation.getProject().getUuid())
+                                    .collect(Collectors.toSet())));
+            for (final PolicyViolation violation : violations) {
+                violation
+                        .getProject()
+                        .setAncestors(ancestorsByProjectUuid.get(
+                                violation.getProject().getUuid()));
+            }
+            return Response.ok(violations)
                     .header(TOTAL_COUNT_HEADER, result.getTotal())
                     .build();
         }

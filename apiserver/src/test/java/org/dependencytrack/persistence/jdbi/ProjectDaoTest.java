@@ -34,6 +34,7 @@ import org.dependencytrack.model.Policy;
 import org.dependencytrack.model.PolicyCondition;
 import org.dependencytrack.model.PolicyViolation;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.ProjectMetadata;
 import org.dependencytrack.model.ServiceComponent;
 import org.dependencytrack.model.Vex;
@@ -55,6 +56,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -427,6 +429,40 @@ public class ProjectDaoTest extends PersistenceCapableTest {
         assertThat(projectDao.getProjectId(project.getUuid())).isEqualTo(null);
         qm.persist(project);
         assertThat(projectDao.getProjectId(project.getUuid())).isEqualTo(project.getId());
+    }
+
+    @Test
+    public void testGetAncestors() {
+        final var root = new Project();
+        root.setName("acme-root");
+        qm.persist(root);
+
+        final var parent = new Project();
+        parent.setName("acme-parent");
+        parent.setVersion("1.0.0");
+        parent.setParent(root);
+        qm.persist(parent);
+
+        final var child = new Project();
+        child.setName("acme-child");
+        child.setParent(parent);
+        qm.persist(child);
+
+        final var unrelated = new Project();
+        unrelated.setName("acme-unrelated");
+        qm.persist(unrelated);
+
+        assertThat(projectDao.getAncestors(
+                        List.of(root.getUuid(), parent.getUuid(), child.getUuid(), unrelated.getUuid())))
+                .containsOnly(
+                        Map.entry(parent.getUuid(), List.of(new ProjectAncestor(root.getUuid(), "acme-root", null))),
+                        Map.entry(
+                                child.getUuid(),
+                                List.of(
+                                        new ProjectAncestor(root.getUuid(), "acme-root", null),
+                                        new ProjectAncestor(parent.getUuid(), "acme-parent", "1.0.0"))));
+
+        assertThat(projectDao.getAncestors(List.of())).isEmpty();
     }
 
     @Test

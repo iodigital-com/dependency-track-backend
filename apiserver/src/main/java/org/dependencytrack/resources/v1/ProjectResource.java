@@ -40,6 +40,7 @@ import org.dependencytrack.common.pagination.Page;
 import org.dependencytrack.metrics.MetricsDao;
 import org.dependencytrack.model.Classifier;
 import org.dependencytrack.model.Project;
+import org.dependencytrack.model.ProjectAncestor;
 import org.dependencytrack.model.ProjectCollectionLogic;
 import org.dependencytrack.model.validation.ValidUuid;
 import org.dependencytrack.notification.JdoNotificationEmitter;
@@ -222,25 +223,34 @@ public class ProjectResource extends AbstractApiResource {
                     final Boolean onlyRootFilter,
             @Parameter(description = "Whether to include metrics in the response.") @QueryParam("includeMetrics")
                     final boolean includeMetrics) {
-        final Page<ProjectDao.ConciseProjectListRow> page = withJdbiHandle(
-                getAlpineRequest(),
-                handle -> handle.attach(ProjectDao.class)
-                        .getPageConcise(new ListProjectsConciseQuery()
-                                .withNameFilter(nameFilter)
-                                .withVersionFilter(versionFilter)
-                                .withClassifierFilter(classifierFilter)
-                                .withTagFilter(tagFilter)
-                                .withTeamFilter(teamFilter)
-                                .withActiveFilter(activeFilter)
-                                .withOnlyRootFilter(onlyRootFilter)
-                                .withSearchText(getAlpineRequest().getFilter())
-                                .withIncludeMetrics(includeMetrics)));
+        return withJdbiHandle(getAlpineRequest(), handle -> {
+            final var dao = handle.attach(ProjectDao.class);
+            final Page<ProjectDao.ConciseProjectListRow> page = dao.getPageConcise(new ListProjectsConciseQuery()
+                    .withNameFilter(nameFilter)
+                    .withVersionFilter(versionFilter)
+                    .withClassifierFilter(classifierFilter)
+                    .withTagFilter(tagFilter)
+                    .withTeamFilter(teamFilter)
+                    .withActiveFilter(activeFilter)
+                    .withOnlyRootFilter(onlyRootFilter)
+                    .withSearchText(getAlpineRequest().getFilter())
+                    .withIncludeMetrics(includeMetrics));
 
-        final List<ConciseProject> projects =
-                page.items().stream().map(ConciseProject::new).toList();
-        return Response.ok(projects)
-                .header(TOTAL_COUNT_HEADER, page.totalCount().value())
-                .build();
+            // Root projects have no ancestors. For all other projects, the ancestors
+            // tell where in the hierarchy a project is, which a flat list doesn't show.
+            final Map<UUID, List<ProjectAncestor>> ancestorsByProjectUuid = Boolean.TRUE.equals(onlyRootFilter)
+                    ? Map.of()
+                    : dao.getAncestors(page.items().stream()
+                            .map(ProjectDao.ConciseProjectListRow::uuid)
+                            .toList());
+            final List<ConciseProject> projects = page.items().stream()
+                    .map(row -> new ConciseProject(row, ancestorsByProjectUuid.get(row.uuid())))
+                    .toList();
+
+            return Response.ok(projects)
+                    .header(TOTAL_COUNT_HEADER, page.totalCount().value())
+                    .build();
+        });
     }
 
     @GET

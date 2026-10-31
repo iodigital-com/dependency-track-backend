@@ -20,7 +20,9 @@ package org.dependencytrack.resources.v1.vo;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
+import org.dependencytrack.model.ProjectAncestor;
 
+import java.util.List;
 import java.util.UUID;
 
 import static io.swagger.v3.oas.annotations.media.Schema.RequiredMode.REQUIRED;
@@ -37,4 +39,7 @@ public record TaggedCollectionProjectListResponseItem(
         String name,
 
         @Schema(description = "Version of the collection project")
-        String version) {}
+        String version,
+
+        @Schema(description = "Ancestors of the project, ordered from the root to the direct parent")
+        List<ProjectAncestor> ancestors) {}

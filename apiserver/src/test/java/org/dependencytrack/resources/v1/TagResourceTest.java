@@ -648,6 +648,56 @@ class TagResourceTest extends ResourceTest {
     }
 
     @Test
+    void getTaggedProjectsWithAncestorsTest() {
+        initializeWithPermissions(Permissions.VIEW_PORTFOLIO);
+
+        final var rootProject = new Project();
+        rootProject.setName("acme-root");
+        qm.persist(rootProject);
+
+        final var parentProject = new Project();
+        parentProject.setParent(rootProject);
+        parentProject.setName("acme-parent");
+        parentProject.setVersion("1.0.0");
+        qm.persist(parentProject);
+
+        final var project = new Project();
+        project.setParent(parentProject);
+        project.setName("acme-app");
+        qm.persist(project);
+
+        qm.bind(project, List.of(qm.createTag("foo")));
+
+        final Response response = jersey.target(V1_TAG + "/foo/project")
+                .request()
+                .header(X_API_KEY, apiKey)
+                .get();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThatJson(getPlainTextBody(response))
+                .isEqualTo(
+                        /* language=JSON */ """
+                        [
+                          {
+                            "uuid": "%s",
+                            "name": "acme-app",
+                            "ancestors": [
+                              {
+                                "uuid": "%s",
+                                "name": "acme-root"
+                              },
+                              {
+                                "uuid": "%s",
+                                "name": "acme-parent",
+                                "version": "1.0.0"
+                              }
+                            ]
+                          }
+                        ]
+                        """.formatted(
+                                        project.getUuid(), rootProject.getUuid(), parentProject.getUuid()));
+    }
+
+    @Test
     void getTaggedProjectsWithPaginationTest() {
         initializeWithPermissions(Permissions.VIEW_PORTFOLIO);
         final Tag tag = qm.createTag("foo");

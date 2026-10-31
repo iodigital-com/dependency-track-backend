@@ -1238,7 +1238,13 @@ class ProjectResourceTest extends ResourceTest {
                     "name": "acme-app-b",
                     "active": false,
                     "isLatest": false,
-                    "hasChildren": false
+                    "hasChildren": false,
+                    "ancestors": [
+                      {
+                        "uuid": "${json-unit.any-string}",
+                        "name": "acme-app-a"
+                      }
+                    ]
                   }
                 ]
                 """);
@@ -1265,7 +1271,13 @@ class ProjectResourceTest extends ResourceTest {
                     "name": "acme-app-b",
                     "active": false,
                     "isLatest": false,
-                    "hasChildren": false
+                    "hasChildren": false,
+                    "ancestors": [
+                      {
+                        "uuid": "${json-unit.any-string}",
+                        "name": "acme-app-a"
+                      }
+                    ]
                   }
                 ]
                 """);
@@ -1289,6 +1301,56 @@ class ProjectResourceTest extends ResourceTest {
                   }
                 ]
                 """);
+    }
+
+    @Test
+    void getProjectsConciseWithAncestorsTest() {
+        initializeWithPermissions(Permissions.VIEW_PORTFOLIO);
+        final var root = new Project();
+        root.setName("acme-root");
+        qm.persist(root);
+
+        final var parent = new Project();
+        parent.setParent(root);
+        parent.setName("acme-parent");
+        parent.setVersion("1.0.0");
+        qm.persist(parent);
+
+        final var child = new Project();
+        child.setParent(parent);
+        child.setName("acme-child");
+        qm.persist(child);
+
+        final Response response = jersey.target(V1_PROJECT + "/concise")
+                .queryParam("searchText", "acme-child")
+                .request()
+                .header(X_API_KEY, apiKey)
+                .get();
+        assertThat(response.getStatus()).isEqualTo(200);
+        assertThat(response.getHeaderString(TOTAL_COUNT_HEADER)).isEqualTo("1");
+        assertThatJson(getPlainTextBody(response))
+                .isEqualTo(/* language=JSON */ """
+                [
+                  {
+                    "uuid": "%s",
+                    "name": "acme-child",
+                    "active": true,
+                    "isLatest": false,
+                    "hasChildren": false,
+                    "ancestors": [
+                      {
+                        "uuid": "%s",
+                        "name": "acme-root"
+                      },
+                      {
+                        "uuid": "%s",
+                        "name": "acme-parent",
+                        "version": "1.0.0"
+                      }
+                    ]
+                  }
+                ]
+                """.formatted(child.getUuid(), root.getUuid(), parent.getUuid()));
     }
 
     @Test
