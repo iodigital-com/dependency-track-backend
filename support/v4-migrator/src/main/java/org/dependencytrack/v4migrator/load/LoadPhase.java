@@ -101,6 +101,7 @@ public final class LoadPhase {
             totalRows += loadOne(t);
             tableCount++;
         }
+        validateForeignKeys();
         postLoad();
 
         if (dropStagingAfter) {
@@ -312,6 +313,54 @@ public final class LoadPhase {
         });
     }
 
+    /**
+     * Checks every foreign key of the public schema with one anti-join each, since the load runs with the
+     * per-row checks off. Constraints inherited by partitions are covered by their parent. Fails if any
+     * row has no parent.
+     */
+    private void validateForeignKeys() {
+        LOGGER.info("Validating foreign keys (set-based)");
+        final long start = System.nanoTime();
+        target.useHandle(h -> {
+            h.execute("""
+                DO $$
+                DECLARE
+                  r record;
+                  cond text;
+                  nn_cond text;
+                  cnt bigint;
+                  bad text := '';
+                BEGIN
+                  FOR r IN
+                    SELECT c.conname, c.conrelid, c.confrelid, c.conkey, c.confkey
+                      FROM pg_constraint c
+                     WHERE c.contype = 'f'
+                       AND c.connamespace = 'public'::regnamespace
+                       AND c.conparentid = 0
+                  LOOP
+                    SELECT string_agg(format('t.%I = p.%I', a1.attname, a2.attname), ' AND '),
+                           string_agg(format('t.%I IS NOT NULL', a1.attname), ' AND ')
+                      INTO cond, nn_cond
+                      FROM unnest(r.conkey, r.confkey) AS k(l, f)
+                      JOIN pg_attribute a1 ON a1.attrelid = r.conrelid AND a1.attnum = k.l
+                      JOIN pg_attribute a2 ON a2.attrelid = r.confrelid AND a2.attnum = k.f;
+                    EXECUTE format(
+                      'SELECT count(*) FROM %s t WHERE (%s) AND NOT EXISTS (SELECT 1 FROM %s p WHERE %s)',
+                      r.conrelid::regclass, nn_cond, r.confrelid::regclass, cond) INTO cnt;
+                    IF cnt > 0 THEN
+                      bad := bad || format('%s on %s: %s row(s) without parent; ', r.conname, r.conrelid::regclass, cnt);
+                    END IF;
+                  END LOOP;
+                  IF bad <> '' THEN
+                    RAISE EXCEPTION 'Foreign key violations after load: %', bad;
+                  END IF;
+                END
+                $$
+                """);
+        });
+        LOGGER.info("Foreign keys validated in {} ms", (System.nanoTime() - start) / 1_000_000);
+    }
+
     private long loadOne(final TableMigration t) {
         LOGGER.info("Loading {} into v5", t.name());
         markState(t.name(), "IN_PROGRESS", 0);
@@ -319,8 +368,13 @@ public final class LoadPhase {
         try (final LoadProgressReporter reporter = new LoadProgressReporter()) {
             reporter.start(t.name(), expected);
             try {
-                final int inserted =
-                        target.inTransaction(h -> h.execute(t.loadSql().formatted(options.stagingSchema)));
+                // The deferred foreign keys are checked row by row at COMMIT. For tables with hundreds of
+                // thousands of rows that took hours (COMPONENTS_VULNERABILITIES), so skip the per-row checks
+                // here and validate every foreign key with one set-based query afterwards (validateForeignKeys).
+                final int inserted = target.inTransaction(h -> {
+                    h.execute("SET LOCAL session_replication_role = replica");
+                    return h.execute(t.loadSql().formatted(options.stagingSchema));
+                });
                 markState(t.name(), "COMPLETED", inserted);
                 reporter.done(inserted);
                 return inserted;
